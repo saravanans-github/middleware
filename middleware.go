@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -13,7 +14,7 @@ type ConfigType struct {
 	Resources []ResourceType
 }
 
-// ResourceType is an endpoint that is accesible under Config.Path
+// ResourceType is a data structure for endpoints that is defined for Config.Path
 type ResourceType struct {
 	// Name of the Resource. This value has to escaped for special characters
 	Name string
@@ -21,6 +22,12 @@ type ResourceType struct {
 	Method string
 	// Handler function which will act on the incoming request
 	Handler handlerFunc
+}
+
+// ErrorResponseType is a data structure that defines a HTTP error response from the Middleware
+type ErrorResponseType struct {
+	Status  int    `json:"status"`
+	Message string `json:"message"`
 }
 
 type configError struct {
@@ -54,7 +61,7 @@ func StartServer(config ConfigType) error {
 	}
 
 	for i := 0; i < len(config.Resources); i++ {
-		http.Handle(config.Path+"/"+config.Resources[i].Name, config.Resources[i].Handler(FinalHandler))
+		http.Handle(config.Path+config.Resources[i].Name, config.Resources[i].Handler(FinalHandler))
 	}
 	err := http.ListenAndServe(":"+fmt.Sprint(config.Port), nil)
 	if err != nil {
@@ -66,6 +73,34 @@ func StartServer(config ConfigType) error {
 
 // Pre-built Handlers that can be used.
 
+// IsRequestValid validates the request for a particular resource
+func IsRequestValid(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Check if it's a supported Method
+		method, err := getMethodByResourceName(r.URL.EscapedPath())
+		if err != nil {
+			message, status := getErrorResponse(500, err.Error())
+			http.Error(w, message, status)
+			return
+		}
+
+		if r.Method != method {
+			message, status := getErrorResponse(400, "Method not supported.")
+			http.Error(w, message, status)
+			return
+		}
+
+		// Check for a request body
+		if r.ContentLength == 0 {
+			message, status := getErrorResponse(400, "Body is empty.")
+			http.Error(w, message, status)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
 // EnableCORS enables Cross Origin Resource Sharing for a particular resource
 func EnableCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -74,12 +109,16 @@ func EnableCORS(next http.Handler) http.Handler {
 		if !isAllowedOrigin(r.Header.Get("Origin")) {
 			log.Printf("Origin %s not allowed", r.Header.Get("Origin"))
 			http.Error(w, "This origin is not authorised to access", 401)
+
+			return
 		}
 
 		// Get the method configured for this Resource
 		method, err := getMethodByResourceName(r.URL.EscapedPath())
 		if err != nil {
 			log.Fatal(err)
+
+			return
 		}
 
 		log.Println("Setting CORS headers")
@@ -136,7 +175,7 @@ func validateConfig(config *ConfigType) error {
 
 func getMethodByResourceName(name string) (string, error) {
 	for _, a := range gConfig.Resources {
-		if a.Name == name {
+		if gConfig.Path+a.Name == name {
 			return a.Method, nil
 		}
 	}
@@ -157,4 +196,14 @@ func isAllowedOrigin(origin string) bool {
 
 func (e *configError) Error() string {
 	return e.Message
+}
+
+func getErrorResponse(status int, message string) (string, int) {
+	resBody, err := json.Marshal(ErrorResponseType{status, message})
+	if err != nil {
+		log.Fatal(err)
+		return "Server error.", 500
+	}
+
+	return string(resBody), status
 }
