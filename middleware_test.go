@@ -10,14 +10,14 @@ import (
 var config ConfigType
 
 func TestStartServer(t *testing.T) {
-	resource := []ResourceType{ResourceType{"name1", "GET", testHandler}, ResourceType{"name2", "GET", testHandler2}}
+	resource := []ResourceType{ResourceType{"/name1", "GET", testHandler}, ResourceType{"/name2", "GET", testHandler2}}
 
 	config = ConfigType{8080, "/fp", resource}
 	StartServer(config)
 }
 
 func testHandler(handler http.Handler) http.Handler {
-	return testHandler1(testHandler2(FinalHandler))
+	return IsRequestValid(testHandler2(FinalHandler))
 }
 
 func testHandler1(next http.Handler) http.Handler {
