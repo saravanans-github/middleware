@@ -20,7 +20,10 @@ func TestStartStopServer(t *testing.T) {
 	resource := []ResourceType{ResourceType{"/name1", "POST", testStartStopServerHandler(FinalHandler)}}
 
 	config = ConfigType{Port: 8080, Path: "/fp", Resources: resource}
-	StartServer(config)
+
+	go func() {
+		StartServer(config)
+	}()
 
 	if status := sendRequest("http://localhost:8080/fp/name1", []byte("Hello World")); status != 200 {
 		StopServer()
@@ -36,7 +39,10 @@ func TestIsRequestValid_Negative_WrongMethod(t *testing.T) {
 	resource := []ResourceType{ResourceType{"/name1", "GET", IsRequestValid(testHandler2(FinalHandler))}}
 
 	config = ConfigType{Port: 8080, Path: "/fp", Resources: resource}
-	StartServer(config)
+	go func() {
+		StartServer(config)
+	}()
+
 	if status := sendRequest("http://localhost:8080/fp/name1", []byte("Hello World")); status != 400 {
 		StopServer()
 		t.FailNow()
@@ -51,7 +57,10 @@ func TestEnableCORS_Negative_NoHeader(t *testing.T) {
 	resource := []ResourceType{ResourceType{"/name1", "GET", EnableCORS(testHandler2(FinalHandler))}}
 
 	config = ConfigType{Port: 8080, Path: "/fp", Resources: resource}
-	StartServer(config)
+	go func() {
+		StartServer(config)
+	}()
+
 	if status := sendRequest("http://localhost:8080/fp/name1", []byte("Hello World")); status != 401 {
 		StopServer()
 		t.FailNow()
