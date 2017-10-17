@@ -102,16 +102,14 @@ func IsRequestValid(next http.Handler) http.Handler {
 		log.Println("Starting Is Request Valid check...")
 
 		// Check if it's a supported Method
-		log.Printf("	Finding method for resource: %s...", r.URL.EscapedPath())
+		log.Printf("	Finding allowed method for resource: %s...", r.URL.EscapedPath())
 		method, err := getMethodByResourceName(r.URL.EscapedPath())
 		if err != nil {
 			message, status := getErrorResponse(500, err.Error())
 			http.Error(w, message, status)
 			return
 		}
-		log.Printf("	Finding method for resource: %s... FOUND", r.URL.EscapedPath())
-
-		log.Printf("	Allowed Method: %s", method)
+		log.Printf("	Finding allowed method for resource: %s... FOUND [%s]", r.URL.EscapedPath(), method)
 		log.Printf("	Incoming Method: %s", r.Method)
 
 		if r.Method != method {
