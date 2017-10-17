@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"reflect"
+	"runtime"
 )
 
 // ConfigType is a required to start server
@@ -30,6 +32,7 @@ const _ErrorEmptyResources = "No resources were set for path: "    // + config.p
 const _ErrorInvalidMethod = "No valid Method set for resource: "   // + config.resources[i].path
 const _ErrorInvalidHandler = "No valid Handler set for resource: " // + config.resources[i].handler
 const _ErrorResourceNotFound = "No such resource was found: "      // + config.resources[i].path
+const _HTTPErrorUnauthorisedOrigin = "This origin is not authorised to access."
 
 type errorResponseType struct {
 	Status  int    `json:"status"` // default status is 0
@@ -132,28 +135,34 @@ func IsRequestValid(next http.Handler) http.Handler {
 // EnableCORS enables Cross Origin Resource Sharing for a particular resource
 func EnableCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		log.Println("Setting CORS headers... ")
 
 		// Check if it is a allowed Origin
-		if !isAllowedOrigin(r.Header.Get("Origin")) {
-			log.Printf("Origin %s not allowed", r.Header.Get("Origin"))
-			http.Error(w, "This origin is not authorised to access", 401)
+		log.Println("	Validating request Origin... ")
+		if err := isAllowedOrigin(r.Header.Get("Origin")); err != nil {
+			log.Printf("	Validating request Origin... FAILED. Origin [%s] not found/allowed", r.Header.Get("Origin"))
+			log.Println("Setting CORS headers... ABORTED")
 
+			message, status := getErrorResponse(401, err.Error())
+			http.Error(w, message, status)
 			return
 		}
 
 		// Get the method configured for this Resource
+		log.Println("	Validating request Method... ")
 		method, err := getMethodByResourceName(r.URL.EscapedPath())
 		if err != nil {
-			log.Fatal(err)
+			log.Printf("	Validating request Method... FAILED. %s", err.Error())
+			log.Println("Setting CORS headers... ABORTED")
+
+			log.Println(err)
 			http.Error(w, err.Error(), 500)
 			return
 		}
 
-		log.Println("Setting CORS headers")
 		w.Header().Set("Access-Control-Allow-Methods", method)
 		w.Header().Set("Access-Control-Allow-Credentials", "true")
-
-		w.Header().Set("Content-Type", "text/html")
+		log.Println("Setting CORS headers... DONE")
 
 		// Stop here if its Preflighted OPTIONS request
 		if r.Method == "OPTIONS" {
@@ -211,15 +220,15 @@ func getMethodByResourceName(path string) (string, error) {
 	return "", errorResponseType{Status: 400, Message: _ErrorResourceNotFound + path}
 }
 
-func isAllowedOrigin(origin string) bool {
+func isAllowedOrigin(origin string) error {
 	for _, allowed := range AllowedOrigins {
 		if origin == allowed {
-			return true
+			return nil
 		}
 	}
 
 	// no valid origin found; so return false
-	return false
+	return errorResponseType{Message: _HTTPErrorUnauthorisedOrigin}
 }
 
 func (e errorResponseType) Error() string {
@@ -239,7 +248,7 @@ func getErrorResponse(status int, message string) (string, int) {
 func serve(w http.ResponseWriter, r *http.Request) {
 	log.Println("Finding handler...")
 	if h, ok := _mux[r.URL.String()]; ok {
-		log.Println("Finding handler... FOUND")
+		log.Printf("Finding handler... FOUND [%s]", runtime.FuncForPC(reflect.ValueOf(h).Pointer()).Name())
 		h.ServeHTTP(w, r)
 		return
 	}
