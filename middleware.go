@@ -17,21 +17,23 @@ type ConfigType struct {
 // ResourceType is a data structure for endpoints that is defined for Config.Path
 type ResourceType struct {
 	// Name of the Resource. This value has to escaped for special characters
-	Name string
+	Path string
 	// Only accepts on of the following: POST, GET, OPTIONS, CONNECT
 	Method string
 	// Handler function which will act on the incoming request
-	Handler handlerFunc
+	Handler http.Handler
 }
 
-// ErrorResponseType is a data structure that defines a HTTP error response from the Middleware
-type ErrorResponseType struct {
-	Status  int    `json:"status"`
+const _ErrorInvalidPath = "No valid PATH set"
+const _ErrorInvalidPort = "No valid PORT set"
+const _ErrorEmptyResources = "No resources were set for path: "    // + config.path
+const _ErrorInvalidMethod = "No valid Method set for resource: "   // + config.resources[i].path
+const _ErrorInvalidHandler = "No valid Handler set for resource: " // + config.resources[i].handler
+const _ErrorResourceNotFound = "No such resource was found: "      // + config.resources[i].path
+
+type errorResponseType struct {
+	Status  int    `json:"status"` // default status is 0
 	Message string `json:"message"`
-}
-
-type configError struct {
-	Message string
 }
 
 // FinalHandler is a helper http.HandlerFunc as the final closure to the Resource handler
@@ -41,31 +43,49 @@ var FinalHandler http.HandlerFunc
 // AllowedOrigins is an array of origins that are allowed if EnableCORS handler is used
 var AllowedOrigins []string
 
-// Local variables
-type handlerFunc func(handler http.Handler) http.Handler
-
-var gConfig ConfigType
+var _config ConfigType
+var _server http.Server
+var _mux map[string]http.Handler
 
 // StartServer starts a server with the specified config
-func StartServer(config ConfigType) error {
+func StartServer(config ConfigType) (err error) {
 
 	// store a global reference of the config
-	gConfig = config
+	_config = config
 
 	// first thing... ensure that the config is valid
-	validateConfig(&config)
+	if err = validateConfig(&config); err != nil {
+		log.Println(err.Error())
+		return
+	}
 
 	// the implementor has an option to set his own final handler.
 	if FinalHandler == nil {
 		FinalHandler = http.HandlerFunc(final)
 	}
 
+	//
+	_mux = make(map[string]http.Handler)
+
 	for i := 0; i < len(config.Resources); i++ {
-		http.Handle(config.Path+config.Resources[i].Name, config.Resources[i].Handler(FinalHandler))
+		_mux[config.Path+config.Resources[i].Path] = config.Resources[i].Handler
 	}
-	err := http.ListenAndServe(":"+fmt.Sprint(config.Port), nil)
-	if err != nil {
-		log.Panic(err)
+
+	_server = http.Server{Addr: (":" + fmt.Sprint(config.Port)), Handler: http.HandlerFunc(serve)}
+
+	go func() {
+		if err = _server.ListenAndServe(); err != nil {
+			// cannot panic, because this probably is an intentional close
+		}
+	}()
+
+	return nil
+}
+
+// StopServer stops a running server
+func StopServer() error {
+	if err := _server.Shutdown(nil); err != nil {
+		panic(err) // failure/timeout shutting down the server gracefully
 	}
 
 	return nil
@@ -76,15 +96,23 @@ func StartServer(config ConfigType) error {
 // IsRequestValid validates the request for a particular resource
 func IsRequestValid(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		log.Println("Starting Is Request Valid check...")
+
 		// Check if it's a supported Method
+		log.Printf("	Finding method for resource: %s...", r.URL.EscapedPath())
 		method, err := getMethodByResourceName(r.URL.EscapedPath())
 		if err != nil {
 			message, status := getErrorResponse(500, err.Error())
 			http.Error(w, message, status)
 			return
 		}
+		log.Printf("	Finding method for resource: %s... FOUND", r.URL.EscapedPath())
+
+		log.Printf("	Allowed Method: %s", method)
+		log.Printf("	Incoming Method: %s", r.Method)
 
 		if r.Method != method {
+			log.Println("Start Is Request Valid check... FAILED")
 			message, status := getErrorResponse(400, "Method not supported.")
 			http.Error(w, message, status)
 			return
@@ -117,7 +145,7 @@ func EnableCORS(next http.Handler) http.Handler {
 		method, err := getMethodByResourceName(r.URL.EscapedPath())
 		if err != nil {
 			log.Fatal(err)
-
+			http.Error(w, err.Error(), 500)
 			return
 		}
 
@@ -145,42 +173,42 @@ func final(w http.ResponseWriter, r *http.Request) {
 func validateConfig(config *ConfigType) error {
 	// Check if the port is a valid port
 	if (*config).Port == 0 || (*config).Port > 65536 {
-		return &configError{"No valid PORT set."}
+		return errorResponseType{Message: _ErrorInvalidPort}
 	}
 
-	if (*config).Path == "" {
-		return &configError{"No valid PATH set."}
+	if (*config).Path == "" || string((*config).Path[0]) != "/" {
+		return errorResponseType{Message: _ErrorInvalidPath}
 	}
 
 	if len((*config).Resources) == 0 {
-		return nil
+		return errorResponseType{Message: _ErrorEmptyResources + (*config).Path}
 	}
 
 	for i := 0; i < len(config.Resources); i++ {
-		if (*config).Resources[i].Name == "" {
-			return &configError{"No valid RESOURCE set for path [" + (*config).Path + "]"}
+		if (*config).Resources[i].Path == "" || string((*config).Path[0]) != "/" {
+			return errorResponseType{Message: _ErrorInvalidPath + (*config).Path}
 		}
 
 		if (*config).Resources[i].Method == "" {
-			return &configError{"No valid METHOD set for resource [" + (*config).Resources[i].Name + "]"}
+			return errorResponseType{Message: _ErrorInvalidMethod + (*config).Resources[i].Path}
 		}
 
 		if (*config).Resources[i].Handler == nil {
-			return &configError{"No valid HANDLER set for resource [" + (*config).Resources[i].Name + "]"}
+			return errorResponseType{Message: _ErrorInvalidHandler}
 		}
 	}
 
 	return nil
 }
 
-func getMethodByResourceName(name string) (string, error) {
-	for _, a := range gConfig.Resources {
-		if gConfig.Path+a.Name == name {
+func getMethodByResourceName(path string) (string, error) {
+	for _, a := range _config.Resources {
+		if _config.Path+a.Path == path {
 			return a.Method, nil
 		}
 	}
 
-	return "", &configError{"Resource with name " + name + " not found."}
+	return "", errorResponseType{Status: 400, Message: _ErrorResourceNotFound + path}
 }
 
 func isAllowedOrigin(origin string) bool {
@@ -194,16 +222,34 @@ func isAllowedOrigin(origin string) bool {
 	return false
 }
 
-func (e *configError) Error() string {
+func (e errorResponseType) Error() string {
 	return e.Message
 }
 
 func getErrorResponse(status int, message string) (string, int) {
-	resBody, err := json.Marshal(ErrorResponseType{status, message})
+	resBody, err := json.Marshal(errorResponseType{status, message})
 	if err != nil {
 		log.Fatal(err)
 		return "Server error.", 500
 	}
 
 	return string(resBody), status
+}
+
+func serve(w http.ResponseWriter, r *http.Request) {
+	log.Println("Finding handler...")
+	if h, ok := _mux[r.URL.String()]; ok {
+		log.Println("Finding handler... FOUND")
+		h.ServeHTTP(w, r)
+		return
+	}
+
+	log.Println("Finding handler... NOT found")
+	// If we can't find a handler - Give throw a Resource Not Found error
+	resourceNotFound(w)
+}
+
+func resourceNotFound(w http.ResponseWriter) {
+	message, status := getErrorResponse(404, _ErrorResourceNotFound+"Check that you entered your URL correctly")
+	http.Error(w, message, status)
 }
