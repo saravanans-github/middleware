@@ -45,6 +45,21 @@ func TestIsRequestValid(t *testing.T) {
 	}
 }
 
+func TestEnableCORS_NoHeader(t *testing.T) {
+	initTest()
+
+	resource := []ResourceType{ResourceType{"/name1", "GET", EnableCORS(testHandler2(FinalHandler))}}
+
+	config = ConfigType{Port: 8080, Path: "/fp", Resources: resource}
+	StartServer(config)
+	if status := sendRequest("http://localhost:8080/fp/name1", []byte("Hello World")); status != 401 {
+		StopServer()
+		t.FailNow()
+	} else {
+		StopServer()
+	}
+}
+
 func TestResourceNotFound(t *testing.T) {
 	resource := []ResourceType{ResourceType{"/name1", "POST", IsRequestValid(testHandler2(FinalHandler))}}
 
