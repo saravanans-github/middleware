@@ -30,7 +30,7 @@ func TestStartStopServer(t *testing.T) {
 	}
 }
 
-func TestIsRequestValid(t *testing.T) {
+func TestIsRequestValid_Negative_WrongMethod(t *testing.T) {
 	initTest()
 
 	resource := []ResourceType{ResourceType{"/name1", "GET", IsRequestValid(testHandler2(FinalHandler))}}
@@ -45,7 +45,7 @@ func TestIsRequestValid(t *testing.T) {
 	}
 }
 
-func TestEnableCORS_NoHeader(t *testing.T) {
+func TestEnableCORS_Negative_NoHeader(t *testing.T) {
 	initTest()
 
 	resource := []ResourceType{ResourceType{"/name1", "GET", EnableCORS(testHandler2(FinalHandler))}}
@@ -60,21 +60,7 @@ func TestEnableCORS_NoHeader(t *testing.T) {
 	}
 }
 
-func TestResourceNotFound(t *testing.T) {
-	resource := []ResourceType{ResourceType{"/name1", "POST", IsRequestValid(testHandler2(FinalHandler))}}
-
-	config = ConfigType{Port: 8080, Path: "/fp", Resources: resource}
-	StartServer(config)
-
-	if status := sendRequest("http://localhost:8080/fp/name2", []byte("Hello World")); status != 404 {
-		StopServer()
-		t.FailNow()
-	} else {
-		StopServer()
-	}
-}
-
-func TestValidateConfig_ForInvalidPath(t *testing.T) {
+func TestValidateConfig_Negative_ForInvalidPath(t *testing.T) {
 	resource := []ResourceType{ResourceType{"/name1", "POST", IsRequestValid(testHandler2(FinalHandler))}}
 
 	config = ConfigType{Port: 8080, Path: "", Resources: resource}
@@ -88,7 +74,7 @@ func TestValidateConfig_ForInvalidPath(t *testing.T) {
 	}
 }
 
-func TestValidateConfig_ForInvalidPort(t *testing.T) {
+func TestValidateConfig_Negative_ForInvalidPort(t *testing.T) {
 	resource := []ResourceType{ResourceType{"/name1", "POST", IsRequestValid(testHandler2(FinalHandler))}}
 
 	config = ConfigType{Port: 1000000, Path: "/fp", Resources: resource}
@@ -97,7 +83,7 @@ func TestValidateConfig_ForInvalidPort(t *testing.T) {
 	}
 }
 
-func TestValidateConfig_ForEmptyResources(t *testing.T) {
+func TestValidateConfig_Negative_ForEmptyResources(t *testing.T) {
 	resource := []ResourceType{}
 
 	config = ConfigType{Port: 8080, Path: "/fp", Resources: resource}
