@@ -105,7 +105,7 @@ func IsRequestValid(next http.Handler) http.Handler {
 		log.Printf("	Finding allowed method for resource: %s...", r.URL.EscapedPath())
 		method, err := getMethodByResourceName(r.URL.EscapedPath())
 		if err != nil {
-			message, status := getErrorResponse(500, err.Error())
+			message, status := GetErrorResponse(500, err.Error())
 			http.Error(w, message, status)
 			return
 		}
@@ -114,14 +114,14 @@ func IsRequestValid(next http.Handler) http.Handler {
 
 		if r.Method != method {
 			log.Println("Start Is Request Valid check... FAILED")
-			message, status := getErrorResponse(400, "Method not supported.")
+			message, status := GetErrorResponse(400, "Method not supported.")
 			http.Error(w, message, status)
 			return
 		}
 
 		// Check for a request body
 		if r.ContentLength == 0 {
-			message, status := getErrorResponse(400, "Body is empty.")
+			message, status := GetErrorResponse(400, "Body is empty.")
 			http.Error(w, message, status)
 			return
 		}
@@ -141,7 +141,7 @@ func EnableCORS(next http.Handler) http.Handler {
 			log.Printf("	Validating request Origin... FAILED. Origin [%s] not found/allowed", r.Header.Get("Origin"))
 			log.Println("Setting CORS headers... ABORTED")
 
-			message, status := getErrorResponse(401, err.Error())
+			message, status := GetErrorResponse(401, err.Error())
 			http.Error(w, message, status)
 			return
 		}
@@ -233,7 +233,7 @@ func (e errorResponseType) Error() string {
 	return e.Message
 }
 
-func getErrorResponse(status int, message string) (string, int) {
+func GetErrorResponse(status int, message string) (string, int) {
 	resBody, err := json.Marshal(errorResponseType{status, message})
 	if err != nil {
 		log.Fatal(err)
@@ -257,6 +257,6 @@ func serve(w http.ResponseWriter, r *http.Request) {
 }
 
 func resourceNotFound(w http.ResponseWriter) {
-	message, status := getErrorResponse(404, _ErrorResourceNotFound+"Check that you entered your URL correctly")
+	message, status := GetErrorResponse(404, _ErrorResourceNotFound+"Check that you entered your URL correctly")
 	http.Error(w, message, status)
 }
