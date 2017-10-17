@@ -41,7 +41,7 @@ type errorResponseType struct {
 
 // FinalHandler is a helper http.HandlerFunc as the final closure to the Resource handler
 // Implementor can set his own final handler by config.FinalHandler = yourCustomFinalHandlerFunc
-var FinalHandler http.HandlerFunc
+var FinalHandler http.Handler
 
 // AllowedOrigins is an array of origins that are allowed if EnableCORS handler is used
 var AllowedOrigins []string
@@ -63,9 +63,7 @@ func StartServer(config ConfigType) (err error) {
 	}
 
 	// the implementor has an option to set his own final handler.
-	if FinalHandler == nil {
-		FinalHandler = http.HandlerFunc(final)
-	}
+	FinalHandler = http.HandlerFunc(final)
 
 	//
 	_mux = make(map[string]http.Handler)
@@ -135,16 +133,20 @@ func EnableCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		log.Println("Setting CORS headers... ")
 
+		origin := r.Header.Get("Origin")
 		// Check if it is a allowed Origin
 		log.Println("	Validating request Origin... ")
-		if err := isAllowedOrigin(r.Header.Get("Origin")); err != nil {
-			log.Printf("	Validating request Origin... FAILED. Origin [%s] not found/allowed", r.Header.Get("Origin"))
+		if err := isAllowedOrigin(origin); err != nil {
+			log.Printf("	Validating request Origin... FAILED. Origin [%s] not found/allowed", origin)
 			log.Println("Setting CORS headers... ABORTED")
 
 			message, status := GetErrorResponse(401, err.Error())
 			http.Error(w, message, status)
 			return
 		}
+
+		log.Printf("	Validating request Origin... ALLOWED [%s]", origin)
+		w.Header().Set("Access-Control-Allow-Origin", origin)
 
 		// Get the method configured for this Resource
 		log.Println("	Validating request Method... ")
@@ -157,9 +159,10 @@ func EnableCORS(next http.Handler) http.Handler {
 			http.Error(w, err.Error(), 500)
 			return
 		}
-
+		log.Println("	Validating request Method... ALLOWED")
 		w.Header().Set("Access-Control-Allow-Methods", method)
-		w.Header().Set("Access-Control-Allow-Credentials", "true")
+
+		w.Header().Set("Access-Control-Allow-Credentials", "false")
 		log.Println("Setting CORS headers... DONE")
 
 		// Stop here if its Preflighted OPTIONS request
