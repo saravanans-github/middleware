@@ -76,11 +76,11 @@ func StartServer(config ConfigType) (err error) {
 
 	_server = http.Server{Addr: (":" + fmt.Sprint(config.Port)), Handler: http.HandlerFunc(serve)}
 
-	go func() {
-		if err = _server.ListenAndServe(); err != nil {
-			// cannot panic, because this probably is an intentional close
-		}
-	}()
+	//	go func() {
+	if err = _server.ListenAndServe(); err != nil {
+		// cannot panic, because this probably is an intentional close
+	}
+	//	}()
 
 	return nil
 }
