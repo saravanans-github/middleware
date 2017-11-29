@@ -118,7 +118,7 @@ func IsRequestValid(next http.Handler) http.Handler {
 		}
 
 		// Check for a request body
-		if r.ContentLength == 0 {
+		if r.Method == "POST" && r.ContentLength == 0 {
 			message, status := GetErrorResponse(400, "Body is empty.")
 			http.Error(w, message, status)
 			return
