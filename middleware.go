@@ -248,7 +248,7 @@ func GetErrorResponse(status int, message string) (string, int) {
 
 func serve(w http.ResponseWriter, r *http.Request) {
 	log.Println("Finding handler...")
-	if h, ok := _mux[r.URL.String()]; ok {
+	if h, ok := _mux[r.URL.Path]; ok {
 		log.Printf("Finding handler... FOUND [%s]", runtime.FuncForPC(reflect.ValueOf(h).Pointer()).Name())
 		h.ServeHTTP(w, r)
 		return
