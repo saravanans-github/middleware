@@ -25,7 +25,7 @@ func TestStartStopServer(t *testing.T) {
 		StartServer(config)
 	}()
 
-	if status := sendRequest("http://localhost:8080/fp/name1", []byte("Hello World")); status != 200 {
+	if status := sendPostRequest("http://localhost:8080/fp/name1", []byte("Hello World")); status != 200 {
 		StopServer()
 		t.FailNow()
 	} else {
@@ -43,7 +43,7 @@ func TestIsRequestValid_Negative_WrongMethod(t *testing.T) {
 		StartServer(config)
 	}()
 
-	if status := sendRequest("http://localhost:8080/fp/name1", []byte("Hello World")); status != 400 {
+	if status := sendPostRequest("http://localhost:8080/fp/name1", []byte("Hello World")); status != 400 {
 		StopServer()
 		t.FailNow()
 	} else {
@@ -61,7 +61,7 @@ func TestEnableCORS_Negative_NoHeader(t *testing.T) {
 		StartServer(config)
 	}()
 
-	if status := sendRequest("http://localhost:8080/fp/name1", []byte("Hello World")); status != 401 {
+	if status := sendPostRequest("http://localhost:8080/fp/name1", []byte("Hello World")); status != 401 {
 		StopServer()
 		t.FailNow()
 	} else {
@@ -101,6 +101,22 @@ func TestValidateConfig_Negative_ForEmptyResources(t *testing.T) {
 	}
 }
 
+func TestHealthCheck(t *testing.T) {
+	resource := []ResourceType{ResourceType{"/name1", "GET", (testHandler2(FinalHandler))}}
+
+	config = ConfigType{Port: 8080, Path: "/fp", Resources: resource}
+	go func() {
+		StartServer(config)
+	}()
+
+	if status := sendGetRequest("http://localhost:8080/fp/health"); status != 200 {
+		StopServer()
+		t.FailNow()
+	} else {
+		StopServer()
+	}
+}
+
 func testStartStopServerHandler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 	})
@@ -121,9 +137,22 @@ func testHandler2(next http.Handler) http.Handler {
 func testResourceNotFoundHandler(w http.ResponseWriter, r *http.Request) {
 }
 
-func sendRequest(url string, data []byte) int {
+func sendPostRequest(url string, data []byte) int {
 
 	res, err := http.Post(url, "application/json", bytes.NewBuffer(data)) //http.DefaultClient.Do(req)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	defer res.Body.Close()
+
+	return res.StatusCode
+}
+
+func sendGetRequest(url string) int {
+
+	res, err := http.Get(url) //http.DefaultClient.Do(req)
 
 	if err != nil {
 		log.Fatal(err)
