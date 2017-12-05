@@ -17,6 +17,8 @@ type ConfigType struct {
 }
 
 // ResourceType is a data structure for endpoints that is defined for Config.Path
+// the following resource names cannot be used as they are used internally
+// 1. /health
 type ResourceType struct {
 	// Name of the Resource. This value has to escaped for special characters
 	Path string
@@ -34,14 +36,22 @@ const _ErrorInvalidHandler = "No valid Handler set for resource: " // + config.r
 const _ErrorResourceNotFound = "No such resource was found: "      // + config.resources[i].path
 const _HTTPErrorUnauthorisedOrigin = "This origin is not authorised to access."
 
+const _HealthCheckResource = "/health"
+
 type errorResponseType struct {
 	Status  int    `json:"status"` // default status is 0
 	Message string `json:"message"`
 }
 
 // FinalHandler is a helper http.HandlerFunc as the final closure to the Resource handler
-// Implementor can set his own final handler by config.FinalHandler = yourCustomFinalHandlerFunc
+// Implementor can set his own final handler by middleware.FinalHandler = yourCustomFinalHandlerFunc
+// NOTE: this custom handler assignment MUST be done before middleware.StartServer is called
 var FinalHandler http.Handler
+
+// HealthHandler is a helper http.HandlerFunc as the final closure to the Resource handler
+// Implementor can set his own final handler by middleware.HealthHandler = yourCustomHealthHandlerFunc
+// NOTE: this custom handler assignment MUST be done before middleware.StartServer is called
+var HealthHandler http.Handler
 
 // AllowedOrigins is an array of origins that are allowed if EnableCORS handler is used
 var AllowedOrigins []string
@@ -51,10 +61,8 @@ var _server http.Server
 var _mux map[string]http.Handler
 
 // StartServer starts a server with the specified config
+// A /heath resource is automatically added to support health checks. For custom health check implementations you MUST use the HealthHandler param
 func StartServer(config ConfigType) (err error) {
-
-	// store a global reference of the config
-	_config = config
 
 	// first thing... ensure that the config is valid
 	if err = validateConfig(&config); err != nil {
@@ -63,16 +71,31 @@ func StartServer(config ConfigType) (err error) {
 	}
 
 	// the implementor has an option to set his own final handler.
-	FinalHandler = http.HandlerFunc(final)
-
-	//
-	_mux = make(map[string]http.Handler)
-
-	for i := 0; i < len(config.Resources); i++ {
-		_mux[config.Path+config.Resources[i].Path] = config.Resources[i].Handler
+	if FinalHandler == nil {
+		FinalHandler = http.HandlerFunc(final)
 	}
 
-	_server = http.Server{Addr: (":" + fmt.Sprint(config.Port)), Handler: http.HandlerFunc(serve)}
+	if HealthHandler == nil {
+		HealthHandler = http.HandlerFunc(healthCheck)
+	}
+
+	healthCheckResource := ResourceType{Path: _HealthCheckResource,
+		Method:  "GET",
+		Handler: HealthHandler}
+
+	// store a global reference of the config
+	_config.Path = config.Path
+	_config.Port = config.Port
+	_config.Resources = append(config.Resources, healthCheckResource)
+
+	// a dictionary of route(key) - handlers(value)
+	_mux = make(map[string]http.Handler)
+
+	for i := 0; i < len(_config.Resources); i++ {
+		_mux[_config.Path+_config.Resources[i].Path] = _config.Resources[i].Handler
+	}
+
+	_server = http.Server{Addr: (":" + fmt.Sprint(_config.Port)), Handler: http.HandlerFunc(serve)}
 
 	//	go func() {
 	if err = _server.ListenAndServe(); err != nil {
@@ -175,9 +198,12 @@ func EnableCORS(next http.Handler) http.Handler {
 }
 
 // Internal helper functions
-
 func final(w http.ResponseWriter, r *http.Request) {
 	log.Println("Executing finalHandler")
+}
+
+func healthCheck(w http.ResponseWriter, r *http.Request) {
+	log.Println("Executing healthCheckHandler")
 }
 
 func validateConfig(config *ConfigType) error {
